@@ -1,0 +1,12 @@
+# Java Backend .dockerignore
+target/
+!target/*.jar
+.git/
+.gitignore
+.mvn/
+mvnw
+mvnw.cmd
+README.md
+*.log
+*.tmp
+.DS_Store

@@ -1,0 +1,10 @@
+# Go Backend .dockerignore
+/vendor/
+/.git/
+.gitignore
+*.md
+*.log
+*.tmp
+.DS_Store
+/test/
+/docs/
