@@ -74,18 +74,18 @@ services:
       - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - java-backend
-      - go-backend
-      - python-backend
-    environment:
-      - NEXT_PUBLIC_JAVA_API_URL=${JAVA_API_URL}
-      - NEXT_PUBLIC_GO_API_URL=${GO_API_URL}
-      - NEXT_PUBLIC_PYTHON_API_URL=${PYTHON_API_URL}
+#  frontend:
+#    build: ./frontend
+#    ports:
+#      - "3000:3000"
+#    depends_on:
+#      - java-backend
+#      - go-backend
+#      - python-backend
+#    environment:
+#      - NEXT_PUBLIC_JAVA_API_URL=${JAVA_API_URL}
+#      - NEXT_PUBLIC_GO_API_URL=${GO_API_URL}
+#      - NEXT_PUBLIC_PYTHON_API_URL=${PYTHON_API_URL}
 
 volumes:
   postgres_data:
