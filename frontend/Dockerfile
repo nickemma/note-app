@@ -1,4 +1,4 @@
-## Stage 1: Build the app
+## Stage 1: Build the app for Production
 #FROM node:18-alpine AS builder
 #WORKDIR /app
 #
@@ -6,7 +6,7 @@
 #RUN npm install --frozen-lockfile
 #
 #COPY . .
-#RUN npm run build && npm run export
+#RUN npm run build
 #
 ## Stage 2: Serve with Nginx
 #FROM nginx:alpine
@@ -15,3 +15,21 @@
 #
 #EXPOSE 80
 #CMD ["nginx", "-g", "daemon off;"]
+
+# for Development
+FROM node:18-alpine
+WORKDIR /app
+
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Start development server
+CMD ["npm", "run", "dev"]

@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:14-alpine
@@ -7,8 +6,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - ./java-backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
-      - postgres_data:/var/lib/postgresql/data
+      - ./java-backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -19,11 +17,14 @@ services:
 
   mongo:
     image: mongo:5.0-focal
-    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
-    ports:
-      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ADMIN_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ADMIN_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
     volumes:
-      - mongo_data:/data/db
+        - ./go-backend/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    ports:
+        - "27017:27017"
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
       interval: 10s
@@ -44,6 +45,8 @@ services:
       - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
       - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./java-backend:/app
     restart: unless-stopped
 
   go-backend:
@@ -56,8 +59,10 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - MONGO_URI=mongodb://${MONGO_ADMIN_USER}:${MONGO_ADMIN_PASSWORD}@mongo:27017/${MONGO_DB}?authSource=admin
       - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./go-backend:/app
     restart: unless-stopped
 
   python-backend:
@@ -70,23 +75,25 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      - MONGO_URI=${MONGO_URI}
+      - MONGO_URI=mongodb://${MONGO_ADMIN_USER}:${MONGO_ADMIN_PASSWORD}@mongo:27017/${MONGO_DB}?authSource=admin
       - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./python-backend:/app
     restart: unless-stopped
 
-#  frontend:
-#    build: ./frontend
-#    ports:
-#      - "3000:3000"
-#    depends_on:
-#      - java-backend
-#      - go-backend
-#      - python-backend
-#    environment:
-#      - NEXT_PUBLIC_JAVA_API_URL=${JAVA_API_URL}
-#      - NEXT_PUBLIC_GO_API_URL=${GO_API_URL}
-#      - NEXT_PUBLIC_PYTHON_API_URL=${PYTHON_API_URL}
-
-volumes:
-  postgres_data:
-  mongo_data:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - java-backend
+      - go-backend
+      - python-backend
+    environment:
+      - NEXT_PUBLIC_JAVA_API_URL=${JAVA_API_URL}
+      - NEXT_PUBLIC_GO_API_URL=${GO_API_URL}
+      - NEXT_PUBLIC_PYTHON_API_URL=${PYTHON_API_URL}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next

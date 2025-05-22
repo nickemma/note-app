@@ -11,32 +11,44 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
     @Autowired
     private UserRepository userRepository;
+
     @Autowired
     private JwtUtil jwtUtil;
+
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user) {
+    try {
         if (userRepository.findByUsername(user.getUsername()).isPresent()) {
-            return ResponseEntity.badRequest().body("Username already exists");
-        }
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        userRepository.save(user);
-        String token = jwtUtil.generateToken(user.getUsername(), user.getId());
-        return ResponseEntity.ok(new AuthResponse(token, user.getId(), user.getUsername()));
+                return ResponseEntity.badRequest().body("Username already exists");
+            }
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+            User savedUser = userRepository.save(user);
+            String token = jwtUtil.generateToken(savedUser.getUsername(), savedUser.getId());
+            return ResponseEntity.ok(new AuthResponse(token, savedUser.getId(), savedUser.getUsername()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Registration failed: " + e.getMessage());
+       }
+
     }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody User user) {
+    try {
         User existingUser = userRepository.findByUsername(user.getUsername()).orElse(null);
         if (existingUser == null || !passwordEncoder.matches(user.getPassword(), existingUser.getPassword())) {
             return ResponseEntity.badRequest().body("Invalid credentials");
         }
-        String token = jwtUtil.generateToken(existingUser.getUsername(), existingUser.getId());
-        return ResponseEntity.ok(new AuthResponse(token, existingUser.getId(), existingUser.getUsername()));
+          String token = jwtUtil.generateToken(existingUser.getUsername(), existingUser.getId());
+          return ResponseEntity.ok(new AuthResponse(token, existingUser.getId(), existingUser.getUsername()));
+       } catch(Exception e) {
+          return ResponseEntity.status(500).body("Login failed: " + e.getMessage());
+       }
     }
 
     static class AuthResponse {

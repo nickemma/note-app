@@ -1,2 +1,3 @@
 .env
 .idea
+go-backend/mongo-init.js

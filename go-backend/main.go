@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
-	"log"
-	"os"
-	"strings"
-	"time"
-
+	"fmt"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"log"
+	"os"
+	"strings"
+	"time"
 )
 
 type Note struct {
@@ -23,16 +24,22 @@ type Note struct {
 	CreatedAt time.Time          `json:"createdAt" bson:"createdAt"`
 }
 
+// Claims Updated Claims structure to match Java's JWT structure
 type Claims struct {
+	// Sub (subject) will contain the username in Java's JWT
 	Username string `json:"sub"`
-	UserID   int64  `json:"userId"`
+	// UserId as a top-level claim from Java
+	UserID int64 `json:"userId"`
 	jwt.RegisteredClaims
 }
 
 var client *mongo.Client
-var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
+var jwtSecret []byte
 
 func main() {
+	// Get JWT secret from environment variable
+	jwtSecret = []byte(os.Getenv("JWT_SECRET"))
+
 	var err error
 	client, err = mongo.Connect(context.Background(), options.Client().ApplyURI(os.Getenv("MONGO_URI")))
 	if err != nil {
@@ -40,6 +47,15 @@ func main() {
 	}
 
 	r := gin.Default()
+
+	// Add CORS middleware
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://127.0.0.1:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 
 	r.Use(rateLimitMiddleware())
 
@@ -62,18 +78,59 @@ func authMiddleware() gin.HandlerFunc {
 		}
 
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+
+		// Ensure no extra spaces in the token
+		tokenString = strings.TrimSpace(tokenString)
+
+		// For Java-generated JWT tokens, we need a custom approach
+		parts := strings.Split(tokenString, ".")
+		if len(parts) != 3 {
+			c.JSON(401, gin.H{"error": "Invalid token format"})
+			c.Abort()
+			return
+		}
+
+		// Parse token manually using the Manual Parsing Parser
+		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+			// Check the algorithm
+			alg := token.Header["alg"]
+
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", alg)
+			}
 			return jwtSecret, nil
 		})
 
-		if err != nil || !token.Valid {
+		if err != nil {
 			c.JSON(401, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
 
-		c.Set("userId", claims.UserID)
+		if !token.Valid {
+			c.JSON(401, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+
+		// Extract claims from the token
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			c.JSON(401, gin.H{"error": "Invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		// Get userId from claims
+		userIdFloat, ok := claims["userId"].(float64)
+		if !ok {
+			c.JSON(401, gin.H{"error": "Invalid user ID in token"})
+			c.Abort()
+			return
+		}
+
+		// Set the user ID from the validated token
+		c.Set("userId", int64(userIdFloat))
 		c.Next()
 	}
 }
@@ -124,10 +181,14 @@ func getNotes(c *gin.Context) {
 }
 
 func getNote(c *gin.Context) {
-	id, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid note ID"})
+		return
+	}
 	coll := client.Database("notesdb").Collection("notes")
 	var note Note
-	err := coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&note)
+	err = coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&note)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Note not found"})
 		return
@@ -155,7 +216,11 @@ func createNote(c *gin.Context) {
 }
 
 func updateNote(c *gin.Context) {
-	id, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid note ID"})
+		return
+	}
 	var note Note
 	if err := c.ShouldBindJSON(&note); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
@@ -164,7 +229,7 @@ func updateNote(c *gin.Context) {
 
 	coll := client.Database("notesdb").Collection("notes")
 	var existing Note
-	err := coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&existing)
+	err = coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&existing)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Note not found"})
 		return
@@ -185,10 +250,14 @@ func updateNote(c *gin.Context) {
 }
 
 func deleteNote(c *gin.Context) {
-	id, _ := primitive.ObjectIDFromHex(c.Param("id"))
+	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	if err != nil {
+		c.JSON(400, gin.H{"error": "Invalid note ID"})
+		return
+	}
 	coll := client.Database("notesdb").Collection("notes")
 	var note Note
-	err := coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&note)
+	err = coll.FindOne(context.Background(), bson.M{"_id": id}).Decode(&note)
 	if err != nil {
 		c.JSON(404, gin.H{"error": "Note not found"})
 		return
